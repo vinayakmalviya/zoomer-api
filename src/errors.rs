@@ -9,6 +9,11 @@ struct ErrorMessage {
     message: String,
 }
 
+#[derive(Debug)]
+pub struct InternalServerError;
+
+impl warp::reject::Reject for InternalServerError {}
+
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     let code;
     let message;
@@ -23,6 +28,7 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
     } else {
         // catching all other errors
         eprintln!("unhandled rejection: {:?}", err);
+
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = "INTERNAL_SERVER_ERROR";
     }
