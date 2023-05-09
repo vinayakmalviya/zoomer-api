@@ -3,7 +3,10 @@ use serde_json::json;
 use uuid::Uuid;
 use warp::Filter;
 
-use crate::{errors::InternalServerError, with_db, DBPool};
+use crate::{
+    errors::{InternalServerError, RoomNotFoundError},
+    with_db, DBPool,
+};
 
 #[derive(Serialize, Deserialize, sqlx::FromRow)]
 struct Room {
@@ -42,7 +45,7 @@ pub fn rooms_filter(
         .and(warp::path::param::<Uuid>())
         .and(warp::path::end())
         .and(with_db(db_pool.clone()))
-        .map(|room_id: Uuid, _db: DBPool| format!("Single room data {}", room_id));
+        .and_then(fetch_single_room);
 
     let new_room = rooms_base
         .and(warp::post())
@@ -70,8 +73,30 @@ async fn fetch_available_rooms(db: DBPool) -> Result<impl warp::Reply, warp::Rej
 
             Ok(warp::reply::json(&resp))
         }
-        Err(_e) => {
-            dbg!(_e);
+        Err(e) => {
+            dbg!(e);
+
+            Err(warp::reject::custom(InternalServerError))
+        }
+    }
+}
+
+async fn fetch_single_room(room_id: Uuid, db: DBPool) -> Result<impl warp::Reply, warp::Rejection> {
+    let query_result = sqlx::query_as::<_, Room>("SELECT * FROM rooms WHERE rooms.id = $1")
+        .bind(room_id)
+        .fetch_one(&db)
+        .await;
+
+    match query_result {
+        Ok(room) => {
+            let resp = json!({ "room_details": room });
+
+            Ok(warp::reply::json(&resp))
+        }
+        Err(sqlx::Error::RowNotFound) => Err(warp::reject::custom(RoomNotFoundError)),
+        Err(e) => {
+            dbg!(e);
+
             Err(warp::reject::custom(InternalServerError))
         }
     }

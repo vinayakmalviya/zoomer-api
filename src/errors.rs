@@ -5,7 +5,7 @@ use warp::{Rejection, Reply};
 
 #[derive(Serialize)]
 struct ErrorMessage {
-    code: u16,
+    success: bool,
     message: String,
 }
 
@@ -14,17 +14,24 @@ pub struct InternalServerError;
 
 impl warp::reject::Reject for InternalServerError {}
 
+#[derive(Debug)]
+pub struct RoomNotFoundError;
+
+impl warp::reject::Reject for RoomNotFoundError {}
+
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     let code;
     let message;
 
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
-        message = "NOT_FOUND";
-    } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
-        // handling specific errors
+        message = "Not found";
+    } else if let Some(RoomNotFoundError) = err.find() {
         code = StatusCode::NOT_FOUND;
-        message = "NOT_FOUND";
+        message = "Requested room does not exist";
+    } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
+        code = StatusCode::NOT_FOUND;
+        message = "Not found";
     } else {
         // catching all other errors
         eprintln!("unhandled rejection: {:?}", err);
@@ -34,7 +41,7 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
     }
 
     let json = warp::reply::json(&ErrorMessage {
-        code: code.as_u16(),
+        success: false,
         message: message.into(),
     });
 
