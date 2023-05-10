@@ -1,14 +1,16 @@
 mod errors;
-mod rooms;
+mod handlers;
+mod models;
+mod routes;
 
 use std::env;
 
 use dotenv::dotenv;
+use routes::rooms_routes;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use warp::Filter;
 
 use errors::handle_rejection;
-use rooms::rooms_filter;
 
 #[tokio::main]
 async fn main() {
@@ -25,7 +27,7 @@ async fn main() {
         .map(|| "Zoomer API active");
 
     let routes = initial_route
-        .or(rooms_filter(db_pool.clone()))
+        .or(rooms_routes(db_pool.clone()))
         .recover(handle_rejection);
 
     warp::serve(routes).run(([0, 0, 0, 0], 4000)).await;

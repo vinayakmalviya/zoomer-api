@@ -1,105 +1,17 @@
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
-use warp::Filter;
 
 use crate::{
     errors::{
         InternalServerError, RoomNotFoundError, RoomWithIdExistsError, RoomWithNameExistsError,
     },
-    with_db, DBPool,
+    models::{NewRoom, Occupancy, Room},
+    DBPool,
 };
 
-#[derive(Serialize, Deserialize, sqlx::FromRow, Debug)]
-struct Room {
-    id: Uuid,
-    name: String,
-    room_id: String,
-    capacity: String,
-    time_limit: String,
-    link: String,
-    comments: String,
-}
-
-#[derive(Serialize, Deserialize, sqlx::FromRow, Debug)]
-struct Occupancy {
-    id: i32,
-    occupied_room_id: Uuid,
-    #[serde(with = "my_date_format")]
-    occupied_until: DateTime<Utc>,
-    meeting_title: String,
-    comments: String,
-}
-
-#[derive(Deserialize)]
-struct NewRoom {
-    name: String,
-    room_id: String,
-    capacity: String,
-    time_limit: u64,
-    link: String,
-    comments: String,
-}
-
-pub fn rooms_filter(
-    db_pool: DBPool,
-) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    let rooms_base = warp::path("rooms");
-
-    let all_rooms = rooms_base
-        .and(warp::get())
-        .and(warp::path::end())
-        .and(with_db(db_pool.clone()))
-        .and_then(fetch_available_rooms);
-
-    let available_rooms = rooms_base
-        .and(warp::get())
-        .and(warp::path("available"))
-        .and(warp::path::end())
-        .and(with_db(db_pool.clone()))
-        .and_then(fetch_available_rooms);
-
-    let active_rooms = rooms_base
-        .and(warp::get())
-        .and(warp::path("active"))
-        .and(warp::path::end())
-        .and(with_db(db_pool.clone()))
-        .and_then(fetch_active_rooms);
-
-    let single_room = rooms_base
-        .and(warp::get())
-        .and(warp::path::param::<Uuid>())
-        .and(warp::path::end())
-        .and(with_db(db_pool.clone()))
-        .and_then(fetch_single_room);
-
-    let occupancies = rooms_base
-        .and(warp::get())
-        .and(warp::path("occupancies"))
-        .and(warp::path::end())
-        .and(with_db(db_pool.clone()))
-        .and_then(fetch_occupancies);
-
-    let new_room = rooms_base
-        .and(warp::post())
-        .and(warp::path("new"))
-        .and(warp::path::end())
-        .and(warp::body::json())
-        .and(with_db(db_pool.clone()))
-        .and_then(create_new_room);
-
-    all_rooms
-        .or(available_rooms)
-        .or(active_rooms)
-        .or(single_room)
-        .or(occupancies)
-        .or(new_room)
-}
-
-async fn fetch_available_rooms(db: DBPool) -> Result<impl warp::Reply, warp::Rejection> {
+pub async fn fetch_available_rooms(db: DBPool) -> Result<impl warp::Reply, warp::Rejection> {
     let query_result = sqlx::query_as::<_, Room>(
         "SELECT 
           rooms.id, 
@@ -132,7 +44,7 @@ async fn fetch_available_rooms(db: DBPool) -> Result<impl warp::Reply, warp::Rej
     }
 }
 
-async fn fetch_active_rooms(db: DBPool) -> Result<impl warp::Reply, warp::Rejection> {
+pub async fn fetch_active_rooms(db: DBPool) -> Result<impl warp::Reply, warp::Rejection> {
     let query_result = sqlx::query_as::<_, Room>(
         "SELECT 
           rooms.id, 
@@ -165,7 +77,10 @@ async fn fetch_active_rooms(db: DBPool) -> Result<impl warp::Reply, warp::Reject
     }
 }
 
-async fn fetch_single_room(room_id: Uuid, db: DBPool) -> Result<impl warp::Reply, warp::Rejection> {
+pub async fn fetch_single_room(
+    room_id: Uuid,
+    db: DBPool,
+) -> Result<impl warp::Reply, warp::Rejection> {
     let query_result = sqlx::query_as::<_, Room>(
         "SELECT 
           rooms.id, 
@@ -199,7 +114,7 @@ async fn fetch_single_room(room_id: Uuid, db: DBPool) -> Result<impl warp::Reply
     }
 }
 
-async fn fetch_occupancies(db: DBPool) -> Result<impl warp::Reply, warp::Rejection> {
+pub async fn fetch_occupancies(db: DBPool) -> Result<impl warp::Reply, warp::Rejection> {
     let query_result = sqlx::query_as::<_, Occupancy>("SELECT * FROM occupancies")
         .fetch_all(&db)
         .await;
@@ -220,7 +135,7 @@ async fn fetch_occupancies(db: DBPool) -> Result<impl warp::Reply, warp::Rejecti
     }
 }
 
-async fn create_new_room(
+pub async fn create_new_room(
     room_data: NewRoom,
     db: DBPool,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -299,29 +214,5 @@ async fn create_new_room(
 
             Err(warp::reject::custom(InternalServerError))
         }
-    }
-}
-
-mod my_date_format {
-    use chrono::{DateTime, TimeZone, Utc};
-    use serde::{self, Deserialize, Deserializer, Serializer};
-
-    const FORMAT: &'static str = "%Y-%m-%d %H:%M:%S";
-
-    pub fn serialize<S>(date: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let s = format!("{}", date.format(FORMAT));
-        serializer.serialize_str(&s)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        Utc.datetime_from_str(&s, FORMAT)
-            .map_err(serde::de::Error::custom)
     }
 }
