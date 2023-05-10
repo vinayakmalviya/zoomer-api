@@ -19,6 +19,16 @@ pub struct RoomNotFoundError;
 
 impl warp::reject::Reject for RoomNotFoundError {}
 
+#[derive(Debug)]
+pub struct RoomWithNameExistsError;
+
+impl warp::reject::Reject for RoomWithNameExistsError {}
+
+#[derive(Debug)]
+pub struct RoomWithIdExistsError;
+
+impl warp::reject::Reject for RoomWithIdExistsError {}
+
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     let code;
     let message;
@@ -29,6 +39,18 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
     } else if let Some(RoomNotFoundError) = err.find() {
         code = StatusCode::NOT_FOUND;
         message = "Requested room does not exist";
+    } else if let Some(RoomWithNameExistsError) = err.find() {
+        code = StatusCode::BAD_REQUEST;
+        message = "Room with same name exists";
+    } else if let Some(RoomWithIdExistsError) = err.find() {
+        code = StatusCode::BAD_REQUEST;
+        message = "Room with same room id exists";
+    } else if let Some(InternalServerError) = err.find() {
+        code = StatusCode::INTERNAL_SERVER_ERROR;
+        message = "Internal server error";
+    } else if let Some(_) = err.find::<warp::filters::body::BodyDeserializeError>() {
+        code = StatusCode::BAD_REQUEST;
+        message = "Invalid request payload, check if all fields are sent";
     } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
         code = StatusCode::NOT_FOUND;
         message = "Not found";
@@ -37,7 +59,7 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
         eprintln!("unhandled rejection: {:?}", err);
 
         code = StatusCode::INTERNAL_SERVER_ERROR;
-        message = "INTERNAL_SERVER_ERROR";
+        message = "Internal server error";
     }
 
     let json = warp::reply::json(&ErrorMessage {
