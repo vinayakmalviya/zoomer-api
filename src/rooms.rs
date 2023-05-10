@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
@@ -20,6 +21,16 @@ struct Room {
     capacity: String,
     time_limit: String,
     link: String,
+    comments: String,
+}
+
+#[derive(Serialize, Deserialize, sqlx::FromRow, Debug)]
+struct Occupancy {
+    id: i32,
+    occupied_room_id: Uuid,
+    #[serde(with = "my_date_format")]
+    occupied_until: DateTime<Utc>,
+    meeting_title: String,
     comments: String,
 }
 
@@ -44,12 +55,33 @@ pub fn rooms_filter(
         .and(with_db(db_pool.clone()))
         .and_then(fetch_available_rooms);
 
+    let available_rooms = rooms_base
+        .and(warp::get())
+        .and(warp::path("available"))
+        .and(warp::path::end())
+        .and(with_db(db_pool.clone()))
+        .and_then(fetch_available_rooms);
+
+    let active_rooms = rooms_base
+        .and(warp::get())
+        .and(warp::path("active"))
+        .and(warp::path::end())
+        .and(with_db(db_pool.clone()))
+        .and_then(fetch_active_rooms);
+
     let single_room = rooms_base
         .and(warp::get())
         .and(warp::path::param::<Uuid>())
         .and(warp::path::end())
         .and(with_db(db_pool.clone()))
         .and_then(fetch_single_room);
+
+    let occupancies = rooms_base
+        .and(warp::get())
+        .and(warp::path("occupancies"))
+        .and(warp::path::end())
+        .and(with_db(db_pool.clone()))
+        .and_then(fetch_occupancies);
 
     let new_room = rooms_base
         .and(warp::post())
@@ -59,7 +91,12 @@ pub fn rooms_filter(
         .and(with_db(db_pool.clone()))
         .and_then(create_new_room);
 
-    all_rooms.or(single_room).or(new_room)
+    all_rooms
+        .or(available_rooms)
+        .or(active_rooms)
+        .or(single_room)
+        .or(occupancies)
+        .or(new_room)
 }
 
 async fn fetch_available_rooms(db: DBPool) -> Result<impl warp::Reply, warp::Rejection> {
@@ -75,6 +112,39 @@ async fn fetch_available_rooms(db: DBPool) -> Result<impl warp::Reply, warp::Rej
         FROM 
           rooms 
           LEFT JOIN occupancies ON rooms.id != occupancies.occupied_room_id",
+    )
+    .fetch_all(&db)
+    .await;
+
+    match query_result {
+        Ok(rooms) => {
+            let resp = json!({
+                "rooms": rooms,
+            });
+
+            Ok(warp::reply::json(&resp))
+        }
+        Err(e) => {
+            dbg!(e);
+
+            Err(warp::reject::custom(InternalServerError))
+        }
+    }
+}
+
+async fn fetch_active_rooms(db: DBPool) -> Result<impl warp::Reply, warp::Rejection> {
+    let query_result = sqlx::query_as::<_, Room>(
+        "SELECT 
+          rooms.id, 
+          rooms.name, 
+          rooms.room_id, 
+          rooms.capacity, 
+          rooms.link, 
+          TO_CHAR(rooms.time_limit, 'HH24:MI:SS') as time_limit, 
+          rooms.comments 
+        FROM 
+          rooms 
+          JOIN occupancies ON rooms.id = occupancies.occupied_room_id",
     )
     .fetch_all(&db)
     .await;
@@ -121,6 +191,27 @@ async fn fetch_single_room(room_id: Uuid, db: DBPool) -> Result<impl warp::Reply
             Ok(warp::reply::json(&resp))
         }
         Err(sqlx::Error::RowNotFound) => Err(warp::reject::custom(RoomNotFoundError)),
+        Err(e) => {
+            dbg!(e);
+
+            Err(warp::reject::custom(InternalServerError))
+        }
+    }
+}
+
+async fn fetch_occupancies(db: DBPool) -> Result<impl warp::Reply, warp::Rejection> {
+    let query_result = sqlx::query_as::<_, Occupancy>("SELECT * FROM occupancies")
+        .fetch_all(&db)
+        .await;
+
+    match query_result {
+        Ok(occupancies) => {
+            let resp = json!({
+                "occupancies": occupancies,
+            });
+
+            Ok(warp::reply::json(&resp))
+        }
         Err(e) => {
             dbg!(e);
 
@@ -208,5 +299,29 @@ async fn create_new_room(
 
             Err(warp::reject::custom(InternalServerError))
         }
+    }
+}
+
+mod my_date_format {
+    use chrono::{DateTime, TimeZone, Utc};
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    const FORMAT: &'static str = "%Y-%m-%d %H:%M:%S";
+
+    pub fn serialize<S>(date: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let s = format!("{}", date.format(FORMAT));
+        serializer.serialize_str(&s)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Utc.datetime_from_str(&s, FORMAT)
+            .map_err(serde::de::Error::custom)
     }
 }

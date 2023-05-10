@@ -50,7 +50,7 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
         message = "Internal server error";
     } else if let Some(_) = err.find::<warp::filters::body::BodyDeserializeError>() {
         code = StatusCode::BAD_REQUEST;
-        message = "Invalid request payload, check if all fields are sent";
+        message = "Invalid request payload, check if all fields are sent/correct";
     } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
         code = StatusCode::NOT_FOUND;
         message = "Not found";
