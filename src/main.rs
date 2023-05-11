@@ -17,6 +17,12 @@ async fn main() {
     // Load env variables
     dotenv().ok();
 
+    // Setup logging
+    if env::var_os("RUST_LOG").is_none() {
+        env::set_var("RUST_LOG", "rooms=info");
+    }
+    pretty_env_logger::init();
+
     // Connect db
     let db_string = env::var("DB_STRING").expect("Missing env var: DB_STRING");
     let db_pool = connect_to_db(&db_string).await;
@@ -28,6 +34,7 @@ async fn main() {
 
     let routes = initial_route
         .or(rooms_routes(db_pool.clone()))
+        .with(warp::log("rooms"))
         .recover(handle_rejection);
 
     warp::serve(routes).run(([0, 0, 0, 0], 4000)).await;
