@@ -29,9 +29,16 @@ pub struct RoomWithIdExistsError;
 
 impl warp::reject::Reject for RoomWithIdExistsError {}
 
+#[derive(Debug)]
+pub struct RoomOccupiedError;
+
+impl warp::reject::Reject for RoomOccupiedError {}
+
 pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> {
     let code;
     let message;
+
+    dbg!(&err);
 
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
@@ -45,6 +52,9 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
     } else if let Some(RoomWithIdExistsError) = err.find() {
         code = StatusCode::BAD_REQUEST;
         message = "Room with same room id exists";
+    } else if let Some(RoomOccupiedError) = err.find() {
+        code = StatusCode::BAD_REQUEST;
+        message = "Room is already occupied, check selected room";
     } else if let Some(InternalServerError) = err.find() {
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = "Internal server error";
