@@ -37,7 +37,17 @@ async fn main() {
         .with(warp::log("rooms"))
         .recover(handle_rejection);
 
-    warp::serve(routes).run(([0, 0, 0, 0], 4000)).await;
+    // Get port and start server
+    if env::var_os("PORT").is_none() {
+        env::set_var("PORT", "4000");
+    }
+
+    let port: u16 = env::var("PORT")
+        .unwrap()
+        .parse()
+        .expect("Invalid env var: PORT");
+
+    warp::serve(routes).run(([0, 0, 0, 0], port)).await;
 }
 
 pub type DBPool = Pool<Postgres>;
