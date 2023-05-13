@@ -433,6 +433,7 @@ pub async fn handle_freeup_room(
     }
 
     let remove_query = sqlx::query("DELETE FROM occupancies WHERE occupied_room_id = $1")
+        .bind(&room_id)
         .execute(&db)
         .await;
 
