@@ -6,11 +6,11 @@ mod routes;
 use std::env;
 
 use dotenv::dotenv;
-use routes::rooms_routes;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use warp::Filter;
 
 use errors::handle_rejection;
+use routes::rooms_routes;
 
 #[tokio::main]
 async fn main() {
@@ -22,6 +22,17 @@ async fn main() {
         env::set_var("RUST_LOG", "rooms=info");
     }
     pretty_env_logger::init();
+
+    // CORS setup
+    let cors = warp::cors()
+        .allow_any_origin()
+        .allow_headers(vec![
+            "Content-Type",
+            "Accept",
+            "Access-Control-Request-Method",
+            "Access-Control-Request-Headers",
+        ])
+        .allow_methods(vec!["POST", "GET"]);
 
     // Connect db
     let db_string = env::var("DB_STRING").expect("Missing env var: DB_STRING");
@@ -35,6 +46,7 @@ async fn main() {
     let routes = initial_route
         .or(rooms_routes(db_pool.clone()))
         .with(warp::log("rooms"))
+        .with(cors)
         .recover(handle_rejection);
 
     // Get port and start server
