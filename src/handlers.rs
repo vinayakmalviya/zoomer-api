@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::{
     errors::{
-        InternalServerError, RoomNotFoundError, RoomOccupiedError, RoomWithIdExistsError,
-        RoomWithNameExistsError,
+        InternalServerError, RoomNotFoundError, RoomNotOccupiedError, RoomOccupiedError,
+        RoomWithIdExistsError, RoomWithNameExistsError,
     },
     models::{ActiveRoom, NewOccupancy, NewRoom, Occupancy, Room},
     DBPool,
@@ -369,6 +369,81 @@ pub async fn handle_occupy_room(
                 "room_details": active_room,
             });
             Ok(warp::reply::json(&resp))
+        }
+        Err(e) => {
+            dbg!(e);
+
+            Err(warp::reject::custom(InternalServerError))
+        }
+    }
+}
+
+pub async fn handle_freeup_room(
+    room_id: Uuid,
+    db: DBPool,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let room_check_query = sqlx::query_as::<_, Room>(
+        "SELECT 
+          rooms.id, 
+          rooms.name, 
+          rooms.room_id, 
+          rooms.capacity, 
+          rooms.link, 
+          TO_CHAR(rooms.time_limit, 'HH24:MI:SS') as time_limit, 
+          rooms.comments 
+        FROM 
+          rooms 
+        WHERE 
+          id = $1",
+    )
+    .bind(&room_id)
+    .fetch_one(&db)
+    .await;
+
+    match room_check_query {
+        Ok(_) => (),
+        Err(sqlx::Error::RowNotFound) => return Err(warp::reject::custom(RoomNotFoundError)),
+        Err(e) => {
+            dbg!(e);
+
+            return Err(warp::reject::custom(InternalServerError));
+        }
+    }
+
+    let check_query = sqlx::query(
+        "SELECT 
+          occupied_room_id 
+        FROM 
+          occupancies
+        WHERE 
+          occupied_room_id = $1",
+    )
+    .bind(&room_id)
+    .fetch_one(&db)
+    .await;
+
+    match check_query {
+        Ok(_) => (),
+        Err(sqlx::Error::RowNotFound) => return Err(warp::reject::custom(RoomNotOccupiedError)),
+        Err(e) => {
+            dbg!(e);
+
+            return Err(warp::reject::custom(InternalServerError));
+        }
+    }
+
+    let remove_query = sqlx::query("DELETE FROM occupancies WHERE occupied_room_id = $1")
+        .execute(&db)
+        .await;
+
+    match remove_query {
+        Ok(_num_rows) => {
+            let res = json!({
+                "success": true,
+                "message": "Room freed up successfully",
+            });
+
+            Ok(warp::reply::json(&res))
         }
         Err(e) => {
             dbg!(e);
