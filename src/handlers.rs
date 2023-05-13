@@ -453,3 +453,124 @@ pub async fn handle_freeup_room(
         }
     }
 }
+
+pub async fn update_room_details(
+    room_id: Uuid,
+    room_details: NewRoom,
+    db: DBPool,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let check_query = sqlx::query_as::<_, Room>(
+        "SELECT 
+          rooms.id, 
+          rooms.name, 
+          rooms.room_id, 
+          rooms.capacity, 
+          rooms.link, 
+          TO_CHAR(rooms.time_limit, 'HH24:MI:SS') as time_limit, 
+          rooms.comments 
+        FROM 
+          rooms 
+        WHERE 
+          id = $1",
+    )
+    .bind(&room_id)
+    .fetch_one(&db)
+    .await;
+
+    match check_query {
+        Ok(_) => (),
+        Err(sqlx::Error::RowNotFound) => return Err(warp::reject::custom(RoomNotFoundError)),
+        Err(e) => {
+            dbg!(e);
+
+            return Err(warp::reject::custom(InternalServerError));
+        }
+    }
+
+    let check_new_values = sqlx::query_as::<_, Room>(
+        "SELECT 
+          rooms.id, 
+          rooms.name, 
+          rooms.room_id, 
+          rooms.capacity, 
+          rooms.link, 
+          TO_CHAR(rooms.time_limit, 'HH24:MI:SS') as time_limit, 
+          rooms.comments 
+        FROM 
+          rooms 
+        WHERE 
+          (
+            name = $1 
+            OR room_id = $2
+          ) 
+          AND (id != $3)",
+    )
+    .bind(&room_details.name)
+    .bind(&room_details.room_id)
+    .bind(&room_id)
+    .fetch_all(&db)
+    .await;
+
+    match check_new_values {
+        Ok(found_rooms) => {
+            if found_rooms.len() > 0 {
+                let found_room = &found_rooms[0];
+
+                if found_room.name == room_details.name {
+                    return Err(warp::reject::custom(RoomWithNameExistsError));
+                } else if found_room.room_id == room_details.room_id {
+                    return Err(warp::reject::custom(RoomWithIdExistsError));
+                }
+            }
+        }
+        Err(e) => {
+            dbg!(e);
+
+            return Err(warp::reject::custom(InternalServerError));
+        }
+    }
+
+    let interval = Duration::from_secs(room_details.time_limit * 60);
+
+    let update_query = sqlx::query_as::<_, Room>(
+        "UPDATE 
+          rooms 
+        SET 
+          name = $1, 
+          room_id = $2, 
+          capacity = $3, 
+          link = $4, 
+          time_limit = $5, 
+          comments = $6 
+        WHERE 
+          id = $7
+        RETURNING id, 
+          name, 
+          room_id, 
+          capacity, 
+          TO_CHAR(time_limit, 'HH24:MI:SS') as time_limit, 
+          link, 
+          comments",
+    )
+    .bind(&room_details.name)
+    .bind(&room_details.room_id)
+    .bind(&room_details.capacity)
+    .bind(&room_details.link)
+    .bind(&interval)
+    .bind(&room_details.comments)
+    .bind(&room_id)
+    .fetch_one(&db)
+    .await;
+
+    match update_query {
+        Ok(updated_room) => {
+            let resp = json!({ "updated_room": updated_room });
+
+            Ok(warp::reply::json(&resp))
+        }
+        Err(e) => {
+            dbg!(e);
+            return Err(warp::reject::custom(InternalServerError));
+        }
+    }
+}

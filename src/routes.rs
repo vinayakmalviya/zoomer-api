@@ -2,6 +2,7 @@ use crate::{
     handlers::{
         create_new_room, fetch_active_rooms, fetch_available_rooms, fetch_current_state,
         fetch_occupancies, fetch_single_room, handle_freeup_room, handle_occupy_room,
+        update_room_details,
     },
     with_db, DBPool,
 };
@@ -55,6 +56,15 @@ pub fn rooms_routes(
         .and(with_db(db_pool.clone()))
         .and_then(create_new_room);
 
+    let edit_room = rooms_base
+        .and(warp::post())
+        .and(warp::path("edit"))
+        .and(warp::path::param::<Uuid>())
+        .and(warp::path::end())
+        .and(warp::body::json())
+        .and(with_db(db_pool.clone()))
+        .and_then(update_room_details);
+
     let occupy_room = rooms_base
         .and(warp::post())
         .and(warp::path("occupy"))
@@ -77,6 +87,7 @@ pub fn rooms_routes(
         .or(single_room)
         .or(occupancies)
         .or(new_room)
+        .or(edit_room)
         .or(occupy_room)
         .or(freeup_room)
 }
