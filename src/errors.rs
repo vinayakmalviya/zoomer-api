@@ -43,8 +43,6 @@ pub async fn handle_rejection(err: Rejection) -> Result<impl Reply, Infallible> 
     let code;
     let message;
 
-    dbg!(&err);
-
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
         message = "Not found";
