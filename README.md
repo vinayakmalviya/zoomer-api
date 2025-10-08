@@ -1,10 +1,16 @@
 # Zoomer API
 
-A simple API to manage meeting rooms on your own. There is also a UI consuming this API: [zoomer-ui](https://github.com/vinayakmalviya/zoomer-ui)
+> A simple API to manage meeting rooms on your own.
+
+[![Rust](https://img.shields.io/badge/Rust-%23000000.svg?e&logo=rust&logoColor=white)](#) [![Postgres](https://img.shields.io/badge/Postgres-%23316192.svg?logo=postgresql&logoColor=white)](#) [![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=fff)](#)
 
 The rooms are divided into 2 categories: Available and Active
 
 You can occupy, freeup and join any added rooms.
+
+There is also a UI consuming this API: [zoomer-ui](https://github.com/vinayakmalviya/zoomer-ui)
+
+![Zoomer cover image](https://github.com/vinayakmalviya/zoomer-api/blob/main/images/github-cover.svg?raw=true)
 
 ## Models
 
@@ -299,23 +305,26 @@ struct Occupancy {
 | `RoomNotOccupiedError` | Room is not occupied, check selected room |
 | `InternalServerError` | Internal server error |
 
-## Setup
+## Getting started
 
 To setup the API on your local/server, use the following steps:
 
 1. Clone the repository
 2. Create a `.env` file with the following variables
-
-```
-DB_STRING=<url for your postgres db>
-RUST_LOG=<debug/info> # for logging level
-PORT=<set a port if you want to use something other than 4000>
-```
+   ```sh
+   DB_STRING=<url for your postgres db>
+   RUST_LOG=<debug/info> # for logging level
+   PORT=<set a port if you want to use something other than 4000>
+   ```
 
 3. Start the server using `cargo run`
 
 To reload the server on every save,
 
-```
+```sh
 cargo watch -q -c -w src/ -x run
 ```
+
+## License
+
+Distributed under the MIT license. See `LICENSE` for more information.
